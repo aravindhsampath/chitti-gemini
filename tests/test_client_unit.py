@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from client import ChittiClient, SessionUsage, Usage
+from chitti.client import ChittiClient, SessionUsage, Usage
 
 
 BASE_DIR = Path(__file__).parent.parent
@@ -25,7 +25,7 @@ def soul():
 
 @pytest.fixture
 def client(config, soul):
-    with patch("client.genai.Client"):
+    with patch("chitti.client.genai.Client"):
         return ChittiClient(api_key="fake-key", config=config, soul=soul)
 
 

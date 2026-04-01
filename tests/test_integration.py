@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-from client import ChittiClient
+from chitti.client import ChittiClient
 
 
 pytestmark = pytest.mark.skipif(

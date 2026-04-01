@@ -15,10 +15,10 @@ from rich.markdown import Markdown
 from rich.table import Table
 from rich.text import Text
 
-from client import ChittiClient, Usage
+from chitti.client import ChittiClient, Usage
 
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(__file__).parent.parent.parent  # src/chitti -> src -> project root
 console = Console()
 
 

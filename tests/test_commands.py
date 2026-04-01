@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from client import ChittiClient, SessionUsage
-from chitti import handle_command
+from chitti.client import ChittiClient, SessionUsage
+from chitti.__main__ import handle_command
 
 
 @pytest.fixture
