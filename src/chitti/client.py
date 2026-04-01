@@ -1,7 +1,11 @@
 """Async wrapper around the Gemini Interactions API."""
 
+import warnings
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+
+# Suppress the experimental usage warning from google-genai
+warnings.filterwarnings("ignore", message="Interactions usage is experimental")
 
 from google import genai
 
