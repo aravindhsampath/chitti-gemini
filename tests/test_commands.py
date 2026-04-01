@@ -23,7 +23,8 @@ def config():
         "model": {"name": "gemini-3.1-flash-lite-preview"},
         "generation": {"temperature": 1.0, "max_output_tokens": 8192, "thinking_level": "low"},
         "assistant": {"soul_file": "SOUL.md"},
-        "display": {"show_usage": True, "show_thinking": False},
+        "pricing": {"input_per_million": 0.25, "output_per_million": 1.50},
+        "display": {"show_thinking": False},
     }
 
 

@@ -9,6 +9,9 @@ thinking_level = "low"
 [assistant]
 soul_file = "SOUL.md"
 
+[pricing]
+input_per_million = 0.25
+output_per_million = 1.50
+
 [display]
-show_usage = true
 show_thinking = false

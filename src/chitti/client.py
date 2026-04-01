@@ -37,6 +37,9 @@ class SessionUsage:
     total_thought: int = 0
     total_tokens: int = 0
     interaction_count: int = 0
+    # Pricing per million tokens
+    input_price_per_m: float = 0.25
+    output_price_per_m: float = 1.50
 
     def add(self, usage: Usage) -> None:
         self.total_input += usage.input_tokens
@@ -44,6 +47,13 @@ class SessionUsage:
         self.total_thought += usage.thought_tokens
         self.total_tokens += usage.total_tokens
         self.interaction_count += 1
+
+    @property
+    def cost(self) -> float:
+        return (
+            self.total_input * self.input_price_per_m / 1_000_000
+            + self.total_output * self.output_price_per_m / 1_000_000
+        )
 
 
 class ChittiClient:
@@ -60,7 +70,11 @@ class ChittiClient:
         }
         self._previous_id: str | None = None
         self._last_usage: Usage | None = None
-        self.session_usage = SessionUsage()
+        pricing = config.get("pricing", {})
+        self.session_usage = SessionUsage(
+            input_price_per_m=pricing.get("input_per_million", 0.25),
+            output_price_per_m=pricing.get("output_per_million", 1.50),
+        )
 
     @property
     def model(self) -> str:

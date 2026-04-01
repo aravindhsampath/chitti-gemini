@@ -49,8 +49,14 @@ def test_soul_file_exists():
     assert "Chitti" in content
 
 
+def test_pricing_section():
+    with open(BASE_DIR / "chitti.toml", "rb") as f:
+        config = tomllib.load(f)
+    assert isinstance(config["pricing"]["input_per_million"], (int, float))
+    assert isinstance(config["pricing"]["output_per_million"], (int, float))
+
+
 def test_display_section():
     with open(BASE_DIR / "chitti.toml", "rb") as f:
         config = tomllib.load(f)
-    assert isinstance(config["display"]["show_usage"], bool)
     assert isinstance(config["display"]["show_thinking"], bool)

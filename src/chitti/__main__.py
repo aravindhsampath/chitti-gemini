@@ -1,18 +1,19 @@
 """Chitti — AI personal assistant powered by Google Gemini."""
 
 import asyncio
+import os
+import shutil
 import sys
 import tomllib
 from pathlib import Path
 
 from dotenv import load_dotenv
-import os
-
 from prompt_toolkit import PromptSession
+from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.styles import Style as PTStyle
 from rich.console import Console
 from rich.markdown import Markdown
-from rich.table import Table
 from rich.text import Text
 
 from chitti.client import ChittiClient, Usage
@@ -20,6 +21,20 @@ from chitti.client import ChittiClient, Usage
 
 BASE_DIR = Path(__file__).parent.parent.parent  # src/chitti -> src -> project root
 console = Console()
+
+THINKING_ABBREV = {"minimal": "min", "low": "low", "medium": "med", "high": "high"}
+
+PT_STYLE = PTStyle.from_dict({
+    "bottom-toolbar":          "bg:#1a1a2e #e0e0e0",
+    "bottom-toolbar.name":     "bg:#1a1a2e bold #00d4aa",
+    "bottom-toolbar.path":     "bg:#1a1a2e #888888",
+    "bottom-toolbar.sep":      "bg:#1a1a2e #444444",
+    "bottom-toolbar.label":    "bg:#1a1a2e #777777",
+    "bottom-toolbar.value":    "bg:#1a1a2e bold #e0e0e0",
+    "bottom-toolbar.cost":     "bg:#1a1a2e bold #ffd700",
+    "bottom-toolbar.model":    "bg:#1a1a2e #82aaff",
+    "bottom-toolbar.thinking": "bg:#1a1a2e #c792ea",
+})
 
 
 def load_config() -> dict:
@@ -52,40 +67,72 @@ def get_api_key() -> str:
     return api_key
 
 
-def print_usage(usage: Usage | None) -> None:
-    """Print token usage in a compact format."""
-    if not usage:
-        return
-    table = Table(show_header=False, box=None, padding=(0, 1))
-    table.add_column(style="dim")
-    table.add_column(style="dim cyan", justify="right")
-    table.add_row("in", str(usage.input_tokens))
-    table.add_row("out", str(usage.output_tokens))
-    if usage.thought_tokens:
-        table.add_row("think", str(usage.thought_tokens))
-    table.add_row("total", str(usage.total_tokens))
-    console.print(table)
+def make_status_bar(client: ChittiClient, config: dict) -> FormattedText:
+    """Build the bottom toolbar formatted text."""
+    su = client.session_usage
+    cwd = str(BASE_DIR)
+    thinking = THINKING_ABBREV.get(config["generation"]["thinking_level"], "?")
+    model_short = client.model
+
+    # Trim path if it's too long
+    cols = shutil.get_terminal_size().columns
+    max_path_len = max(10, cols // 4)
+    if len(cwd) > max_path_len:
+        cwd = "..." + cwd[-(max_path_len - 3):]
+
+    # Build right-side segments
+    right_parts: list[tuple[str, str]] = [
+        ("class:bottom-toolbar.label", " IN:"),
+        ("class:bottom-toolbar.value", str(su.total_input)),
+        ("class:bottom-toolbar.sep",   "  "),
+        ("class:bottom-toolbar.label", "OUT:"),
+        ("class:bottom-toolbar.value", str(su.total_output)),
+        ("class:bottom-toolbar.sep",   "  "),
+        ("class:bottom-toolbar.label", "THINK:"),
+        ("class:bottom-toolbar.value", str(su.total_thought)),
+        ("class:bottom-toolbar.sep",   "  "),
+        ("class:bottom-toolbar.cost",  f"${su.cost:.4f}"),
+        ("class:bottom-toolbar.sep",   "  "),
+        ("class:bottom-toolbar.label", "Mod:"),
+        ("class:bottom-toolbar.model", model_short),
+        ("class:bottom-toolbar.sep",   "  "),
+        ("class:bottom-toolbar.label", "Th:"),
+        ("class:bottom-toolbar.thinking", thinking),
+        ("class:bottom-toolbar",       " "),
+    ]
+
+    # Left side
+    left_parts: list[tuple[str, str]] = [
+        ("class:bottom-toolbar.name", " Chitti "),
+        ("class:bottom-toolbar.path", cwd),
+    ]
+
+    # Calculate spacing
+    left_len = sum(len(text) for _, text in left_parts)
+    right_len = sum(len(text) for _, text in right_parts)
+    spacer_len = max(1, cols - left_len - right_len)
+
+    return FormattedText(
+        left_parts
+        + [("class:bottom-toolbar", " " * spacer_len)]
+        + right_parts
+    )
 
 
 def print_session_usage(client: ChittiClient) -> None:
     """Print cumulative session token usage."""
     su = client.session_usage
-    table = Table(title="Session Usage", box=None, padding=(0, 1))
-    table.add_column("Metric", style="bold")
-    table.add_column("Value", justify="right", style="cyan")
-    table.add_row("Interactions", str(su.interaction_count))
-    table.add_row("Input tokens", str(su.total_input))
-    table.add_row("Output tokens", str(su.total_output))
-    if su.total_thought:
-        table.add_row("Thought tokens", str(su.total_thought))
-    table.add_row("Total tokens", str(su.total_tokens))
-    console.print(table)
+    console.print(f"[dim]Interactions:[/] [cyan]{su.interaction_count}[/]  "
+                  f"[dim]IN:[/] [cyan]{su.total_input}[/]  "
+                  f"[dim]OUT:[/] [cyan]{su.total_output}[/]  "
+                  f"[dim]THINK:[/] [cyan]{su.total_thought}[/]  "
+                  f"[dim]Total:[/] [cyan]{su.total_tokens}[/]  "
+                  f"[dim]Cost:[/] [yellow]${su.cost:.4f}[/]")
 
 
 def handle_command(cmd: str, client: ChittiClient, config: dict) -> bool:
     """Handle slash commands. Returns True if handled."""
-    parts = cmd.strip().split(maxsplit=1)
-    command = parts[0].lower()
+    command = cmd.strip().split(maxsplit=1)[0].lower()
 
     match command:
         case "/new":
@@ -115,9 +162,13 @@ def handle_command(cmd: str, client: ChittiClient, config: dict) -> bool:
 
 async def repl(client: ChittiClient, config: dict) -> None:
     """Main async REPL loop."""
-    session: PromptSession[str] = PromptSession(history=InMemoryHistory())
-    show_usage = config["display"]["show_usage"]
     show_thinking = config["display"]["show_thinking"]
+
+    session: PromptSession[str] = PromptSession(
+        history=InMemoryHistory(),
+        bottom_toolbar=lambda: make_status_bar(client, config),
+        style=PT_STYLE,
+    )
 
     console.print(f"[bold green]Chitti v0.1[/] — model: [cyan]{client.model}[/]")
     console.print("[dim]Type /help for commands, quit to exit.[/]\n")
@@ -143,7 +194,6 @@ async def repl(client: ChittiClient, config: dict) -> None:
         console.print()
         full_text: list[str] = []
         thought_text: list[str] = []
-        last_usage: Usage | None = None
 
         try:
             async for chunk in client.send(user_input):
@@ -152,8 +202,6 @@ async def repl(client: ChittiClient, config: dict) -> None:
                     console.print(chunk.text, end="", highlight=False)
                 if chunk.thought_summary and show_thinking:
                     thought_text.append(chunk.thought_summary)
-                if chunk.is_complete:
-                    last_usage = chunk.usage
         except KeyboardInterrupt:
             console.print("\n[dim](interrupted)[/]")
             continue
@@ -161,22 +209,16 @@ async def repl(client: ChittiClient, config: dict) -> None:
             console.print(f"\n[bold red]Error:[/] {e}")
             continue
 
-        # Render the full response as markdown
+        # Render full response as markdown if it contains formatting
         response = "".join(full_text)
-        if response:
-            # Clear the raw streamed text and re-render as markdown
-            # Only do this if the response contains markdown formatting
-            if any(c in response for c in ["#", "```", "**", "- ", "1. "]):
-                console.print()  # newline after stream
-                console.print(Markdown(response))
-            else:
-                console.print()  # just a newline after stream
+        if response and any(c in response for c in ["#", "```", "**", "- ", "1. "]):
+            console.print()
+            console.print(Markdown(response))
+        else:
+            console.print()
 
         if thought_text and show_thinking:
             console.print(f"[dim italic]{''.join(thought_text)}[/]")
-
-        if show_usage and last_usage:
-            print_usage(last_usage)
 
         console.print()
 
